@@ -111,14 +111,23 @@ class DocumentRetriever:
             else:
                 logger.warning(f"No documents met the similarity threshold of {self.config.score_threshold}")
         
-        logger.info(f"Retrieved {len(documents)} relevant documents")
+        # Logs détaillés pour chaque chunk récupéré
+        logger.info(f"===== Retrieved {len(documents)} chunks (top_k={self.config.top_k}, threshold={self.config.score_threshold}) =====")
+        for i, (doc, score) in enumerate(zip(documents, scores)):
+            source = doc.metadata.get('source', 'Unknown source')
+            page = doc.metadata.get('page', 'Unknown page')
+            word_count = len(doc.page_content.split())
+            logger.info(f"CHUNK {i+1}: Score={score:.4f}, Source={source}, Page={page}, Words={word_count}")
+            logger.info(f"Preview: {doc.page_content}...")
+            logger.info("-" * 50)
+        
         return RetrievalResult(
             query=query,
             documents=documents,
             scores=scores
         )
 
-    def retrieve_for_rag(self, query: str) -> List[Document]:
+    def get_relevant_documents(self, query: str) -> List[Document]:
         """
         Simplified retrieval method that returns documents for RAG.
         
