@@ -1,9 +1,12 @@
 import os
+import random
 from loader import DocumentLoader, LoaderConfig
 from indexer import DocumentIndexer, IndexerConfig
 from retriever import DocumentRetriever, RetrievalConfig
 from utils.logging_utils import setup_logger
 from generation import RAGGenerator, GeneratorConfig
+from langchain_community.document_loaders import TextLoader
+from langchain.schema import Document
 
 # Set up module-specific logger
 logger = setup_logger("main")
@@ -48,6 +51,108 @@ def index_documents():
     else:
         logger.warning("No documents found to index.")
         return indexer, False
+
+def index_from_ocr():
+    """Create index directly from existing OCR results"""
+    logger.info("Loading documents from existing OCR results")
+    
+    # Directory containing OCR files
+    ocr_dir = "data/ocr"
+    documents = []
+    
+    # Load each OCR file
+    for filename in os.listdir(ocr_dir):
+        if filename.endswith(".txt"):
+            file_path = os.path.join(ocr_dir, filename)
+            logger.info(f"Loading OCR file: {file_path}")
+            
+            try:
+                loader = TextLoader(file_path, encoding="utf-8")
+                docs = loader.load()
+                
+                # Update metadata
+                for doc in docs:
+                    doc.metadata["source"] = filename
+                    doc.metadata["ocr_processed"] = True
+                
+                documents.extend(docs)
+            except Exception as e:
+                logger.error(f"Error loading OCR file: {str(e)}")
+    
+    logger.info(f"Loaded {len(documents)} OCR documents")
+    
+    # Create text splitter
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len,
+    )
+    
+    # Split documents into chunks
+    chunks = text_splitter.split_documents(documents)
+    logger.info(f"Split into {len(chunks)} chunks")
+    
+    # Display 6 random chunks
+    display_random_chunks(chunks, 6)
+    
+    # Initialize the indexer with a French-optimized embedding model
+    indexer_config = IndexerConfig(
+        embedding_model_name="dangvantuan/sentence-camembert-base",
+        index_path="data/indexes"
+    )
+    indexer = DocumentIndexer(config=indexer_config)
+    
+    # Create both FAISS and Chroma indexes
+    faiss_result = indexer.create_faiss_index(chunks)
+    chroma_result = indexer.create_chroma_index(chunks)
+    
+    logger.info(f"Created FAISS index with {faiss_result.document_count} documents at {faiss_result.index_path}")
+    logger.info(f"Created Chroma index with {chroma_result.document_count} documents at {chroma_result.index_path}")
+    
+    return indexer, True
+
+def display_random_chunks(chunks, num_chunks=6):
+    """Display random chunks for inspection"""
+    logger.info(f"Displaying {num_chunks} random chunks for inspection")
+    
+    # Select random chunks
+    if len(chunks) <= num_chunks:
+        selected_chunks = chunks
+    else:
+        selected_chunks = random.sample(chunks, num_chunks)
+    
+    # Create debug directory for saving chunks
+    debug_dir = "data/debug"
+    os.makedirs(debug_dir, exist_ok=True)
+    
+    # Display each selected chunk
+    for i, chunk in enumerate(selected_chunks):
+        logger.info(f"\n==== RANDOM CHUNK {i+1} ====")
+        
+        # Display metadata
+        source = chunk.metadata.get('source', 'Unknown source')
+        page = chunk.metadata.get('page', 'Unknown page')
+        
+        logger.info(f"Source: {source}")
+        logger.info(f"Page: {page}")
+        logger.info(f"Length: {len(chunk.page_content)} characters, {len(chunk.page_content.split())} words")
+        
+        # Save chunk to file for detailed inspection
+        chunk_file = os.path.join(debug_dir, f"chunk_sample_{i+1}.txt")
+        with open(chunk_file, "w", encoding="utf-8") as f:
+            f.write(f"SOURCE: {source}\n")
+            f.write(f"PAGE: {page}\n")
+            f.write(f"LENGTH: {len(chunk.page_content)} characters\n")
+            f.write(f"WORD COUNT: {len(chunk.page_content.split())} words\n\n")
+            f.write("="*50 + "\n\n")
+            f.write(chunk.page_content)
+        
+        logger.info(f"Saved complete chunk to {chunk_file}")
+        
+        # Display preview in logs
+        preview_length = min(200, len(chunk.page_content))
+        logger.info(f"Preview: {chunk.page_content[:preview_length]}...")
 
 def test_retrieval(indexer=None):
     """Test the retrieval functionality with sample queries"""
@@ -150,24 +255,29 @@ def main():
     
     # Prompt user for what to run
     print("\nWhat would you like to do?")
-    print("1. Index documents")
-    print("2. Test retrieval")
-    print("3. Test generation (RAG)")
-    print("4. Do all steps")
-    choice = input("Enter your choice (1-4): ")
+    print("1. Index documents from raw files")
+    print("2. Index from existing OCR results")
+    print("3. Test retrieval")
+    print("4. Test generation (RAG)")
+    print("5. Do all steps")
+    choice = input("Enter your choice (1-5): ")
     
     indexer = None
     success = True
     
-    if choice in ['1', '4']:
-        logger.info("Starting document indexing process")
+    if choice == '1':
+        logger.info("Starting document indexing process from raw files")
         indexer, success = index_documents()
     
-    if (choice in ['2', '4']) and success:
+    elif choice == '2' or choice == '5':
+        logger.info("Starting document indexing process from OCR results")
+        indexer, success = index_from_ocr()
+    
+    if (choice in ['3', '5']) and success:
         logger.info("Starting retrieval testing process")
         test_retrieval(indexer)
     
-    if (choice in ['3', '4']) and success:
+    if (choice in ['4', '5']) and success:
         logger.info("Starting generation testing process")
         test_generation(indexer)
     
