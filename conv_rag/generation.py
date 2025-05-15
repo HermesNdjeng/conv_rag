@@ -6,9 +6,12 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.prompts.chat import (
     ChatPromptTemplate,
-    SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
+    AIMessagePromptTemplate,
+    MessagesPlaceholder,
 )
+from langchain_core.messages import SystemMessage
+from langchain.schema.runnable import RunnableMap
 from langchain.callbacks import get_openai_callback
 from retriever import DocumentRetriever
 from utils.logging_utils import setup_logger
@@ -16,6 +19,9 @@ import os
 
 # Set up module-specific logger
 logger = setup_logger("generator")
+
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
 
 class GeneratorConfig(BaseModel):
     """Configuration for the LLM generator"""
@@ -102,88 +108,145 @@ class RAGGenerator:
         if self.retriever:
             self._setup_qa_chain()
     
+
     def _setup_qa_chain(self):
-        """Set up the QA chain with the current retriever"""
-        # Define system and human message templates
-        system_template = """
-        Tu es un assistant expert sur Ruben Um Nyobe et l'histoire du Cameroun.
+        """Set up the QA chain with the current retriever and conversation memory"""
         
-        Utilise les informations du contexte ci-dessous pour répondre à la question de l'utilisateur.
-        Si tu ne connais pas la réponse à partir du contexte, dis simplement que tu ne sais pas, 
-        n'invente pas d'information.
+        # Conserver l'approche ChatPromptTemplate
+        chat_prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="""Vous êtes un assistant IA spécialisé dans l'histoire du Cameroun, 
+            particulièrement sur Ruben Um Nyobe et la période de lutte pour l'indépendance.
+            Répondez aux questions de manière précise et factuelle en vous basant uniquement 
+            sur les informations contenues dans les documents fournis.
+            Si vous ne connaissez pas la réponse, dites-le clairement sans inventer d'information."""),
+            MessagesPlaceholder(variable_name="chat_history"),
+            HumanMessagePromptTemplate.from_template("{query}"),
+            MessagesPlaceholder(variable_name="context"),
+        ])
         
-        Le contexte est constitué d'extraits d'un livre sur Um Nyobe et les maquis camerounais.
-        Réponds toujours en français, et avec respect pour l'histoire camerounaise.
+        # Importer ce qui est nécessaire pour créer des messages
+        from langchain_core.messages import HumanMessage, AIMessage
         
-        Contexte:
-        {context}
-        """
+        # Créer une fonction pour convertir les documents en messages
+        def docs_to_messages(docs):
+            messages = []
+            for i, doc in enumerate(docs):
+                source = doc.metadata.get('source', 'Unknown source')
+                page = doc.metadata.get('page', 'Unknown page')
+                # Créer un message pour chaque document
+                messages.append(HumanMessage(
+                    content=f"Document {i+1} (Source: {source}, Page: {page}):\n{doc.page_content}"
+                ))
+            return messages
         
-        human_template = "{question}"
-        
-        # Create chat prompt
-        system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
-        human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
-        chat_prompt = ChatPromptTemplate.from_messages(
-            [system_message_prompt, human_message_prompt]
-        )
-        
-        # Create QA chain
-        self.qa_chain = RetrievalQA.from_chain_type(
-            llm=self.llm,
-            chain_type="stuff",  # Stuff all documents into the context
-            retriever=self.retriever.vector_store.as_retriever(
-                search_kwargs={"k": self.retriever.config.top_k}
-            ),
-            return_source_documents=True,
-            chain_type_kwargs={"prompt": chat_prompt}
-        )
-        
-        logger.info("QA chain initialized successfully")
+        # Modifier le RunnableMap pour fournir une liste de messages
+        rag_chain = RunnableMap({
+            "context": lambda x: docs_to_messages(self.retriever.get_relevant_documents(x["query"])),
+            "chat_history": lambda x: x["chat_history"],
+            "query": lambda x: x["query"]
+        }) | chat_prompt | self.llm
+
+        self.qa_chain = rag_chain
+        logger.info("QA chain initialized successfully with conversation history integration")
     
     def set_retriever(self, retriever: DocumentRetriever):
         """Set or update the retriever instance"""
         self.retriever = retriever
         self._setup_qa_chain()
     
-    def generate(self, query: str) -> GenerationResult:
+    def generate(self, query: str, conversation_manager=None) -> GenerationResult:
+        """Generate an answer to the user query using RAG."""
+        logger.info(f"Generating answer for query: {query}")
+        
+        # Get chat history if a conversation manager is provided
+        chat_history = []
+        if conversation_manager:
+            chat_history = conversation_manager.get_chat_history()
+            logger.info(f"Using {len(chat_history)} messages from conversation history")
+        
+        try:
+            # Récupérer les documents d'abord pour pouvoir les logger
+            source_docs = self.retriever.get_relevant_documents(query)
+            
+            # Log des chunks récupérés
+            total_tokens = sum(len(doc.page_content.split()) * 1.3 for doc in source_docs)
+            logger.info(f"===== LLM Context: {len(source_docs)} chunks (approx. {int(total_tokens)} tokens) =====")
+            for i, doc in enumerate(source_docs):
+                source = doc.metadata.get('source', 'Unknown source')
+                page = doc.metadata.get('page', 'Unknown page')
+                words = len(doc.page_content.split())
+                logger.info(f"CONTEXT CHUNK {i+1}: Source={source}, Page={page}, Words={words}")
+            
+            # Utiliser .invoke() avec l'API runnable de LangChain
+            result = self.qa_chain.invoke({
+                "query": query,
+                "chat_history": chat_history
+            })
+            
+            # Avec l'API Runnable, le résultat est directement la réponse du LLM
+            answer = result.content if hasattr(result, 'content') else str(result)
+            
+            # Calculate token usage if tracking is enabled
+            token_usage = None
+            if self.config.track_token_usage:
+                token_usage = self._calculate_token_usage(query, answer, source_docs)
+            
+            return GenerationResult(
+                query=query,
+                answer=answer,
+                source_documents=source_docs,
+                token_usage=token_usage
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating answer: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())  # Afficher la stack trace complète
+            return GenerationResult(
+                query=query,
+                answer=f"Une erreur s'est produite lors de la génération de la réponse: {str(e)}",
+                source_documents=[],
+                token_usage=None
+            )
+
+    # Ajoutez cette méthode à votre classe RAGGenerator
+    def _calculate_token_usage(self, query: str, answer: str, source_docs: List[Document]) -> Dict[str, Union[int, float]]:
         """
-        Generate an answer based on the query and retrieved documents.
+        Calculate token usage for the query, answer, and source documents.
         
         Args:
             query: User's question
+            answer: Generated answer
+            source_docs: Source documents used for generation
             
         Returns:
-            GenerationResult containing the answer and metadata
+            Dictionary with token usage statistics
         """
-        if not self.retriever:
-            logger.error("Retriever not set. Call set_retriever() before generating answers.")
-            raise ValueError("Retriever not initialized")
-        
-        logger.info(f"Generating answer for query: {query}")
-        
-        token_usage = None
-        if self.config.track_token_usage:
+        try:
+            # Use OpenAI's callback to track token usage
             with get_openai_callback() as cb:
-                result = self.qa_chain({"query": query})
-                token_usage = {
+                # Re-run the query to get token counts
+                self.llm.predict(text=f"Question: {query}\n\nAnswer: {answer}")
+                
+                # Log token usage details
+                logger.info(f"===== Token Usage =====")
+                logger.info(f"Prompt tokens: {cb.prompt_tokens}")
+                logger.info(f"Completion tokens: {cb.completion_tokens}")
+                logger.info(f"Total tokens: {cb.total_tokens}")
+                logger.info(f"Cost: ${cb.total_cost:.6f}")
+                
+                return {
                     "prompt_tokens": cb.prompt_tokens,
                     "completion_tokens": cb.completion_tokens,
                     "total_tokens": cb.total_tokens,
                     "cost": cb.total_cost
                 }
-                logger.info(f"Token usage: {token_usage['total_tokens']} tokens, ${token_usage['cost']:.5f}")
-        else:
-            result = self.qa_chain({"query": query})
-        
-        answer = result.get("result", "No answer generated")
-        source_docs = result.get("source_documents", [])
-        
-        logger.info(f"Generated answer of length {len(answer)}")
-        
-        return GenerationResult(
-            query=query,
-            answer=answer,
-            source_documents=source_docs,
-            token_usage=token_usage
-        )
+        except Exception as e:
+            logger.error(f"Error calculating token usage: {str(e)}")
+            return {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "cost": 0.0,
+                "error": str(e)
+            }

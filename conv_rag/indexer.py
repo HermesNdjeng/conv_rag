@@ -8,7 +8,7 @@ import os
 class IndexerConfig(BaseModel):
     """Configuration for document indexer"""
     embedding_model_name: str = Field(
-        default="sentence-transformers/all-MiniLM-L6-v2",
+        default="dangvantuan/sentence-camembert-base",
         description="Name of the HuggingFace embedding model to use"
     )
     index_path: str = Field(
