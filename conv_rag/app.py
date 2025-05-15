@@ -40,7 +40,6 @@ def initialize_rag_components():
     
     # Initialize components
     indexer_config = IndexerConfig(
-        embedding_model_name="dangvantuan/sentence-camembert-base",
         index_path="data/indexes"
     )
     indexer = DocumentIndexer(config=indexer_config)
@@ -48,15 +47,15 @@ def initialize_rag_components():
     retrieval_config = RetrievalConfig(
         index_type="faiss",
         index_name="um_nyobe_index",
-        top_k=4,
+        top_k=8,
         score_threshold=0.5
     )
     retriever = DocumentRetriever(config=retrieval_config, indexer=indexer)
     
     generator_config = GeneratorConfig(
         model_name="gpt-3.5-turbo",
-        temperature=0.7,
-        max_tokens=1024,
+        temperature=0,
+        max_tokens=4096,
         api_key=api_key if not os.getenv("OPENAI_API_KEY") else None,
         track_token_usage=True
     )
@@ -67,7 +66,7 @@ def initialize_rag_components():
 
 def display_source_extract(source, content_preview):
     st.write(f"**Source:** {source.get('title', 'Document')} (Page: {source.get('page', 'N/A')})")
-    st.markdown("**Extrait:**")
+    st.markdown("**Extrait complet:**")
     st.markdown(f"<div style='background-color:#e6f2ff;padding:10px;border-radius:5px;font-size:0.9em;border:1px solid #b3d9ff;color:#003366;'>{content_preview}</div>", unsafe_allow_html=True)
     st.markdown("---")
 
@@ -159,7 +158,7 @@ if user_query:
                 generator._setup_qa_chain()
             
             # Generate response
-            result = generator.generate(user_query)
+            result = generator.generate(user_query, conversation_manager=st.session_state.conversation_manager)
             
             # Display response
             st.write(result.answer)
@@ -168,10 +167,10 @@ if user_query:
             sources = []
             if result.source_documents:
                 with st.expander("Sources"):
-                    for i, doc in enumerate(result.source_documents[:3]):  # Show top 3 sources
+                    for i, doc in enumerate(result.source_documents):  # Show top 3 sources
                         source = doc.metadata.get('source', 'Document inconnu')
                         page = doc.metadata.get('page', 'N/A')
-                        content_preview = doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content
+                        content_preview = doc.page_content
                         
                         st.write(f"**Source {i+1}:** {source} (Page: {page})")
                         st.markdown("**Extrait:**")
@@ -207,7 +206,7 @@ if not st.session_state.messages:
     st.info("""
     👋 Bienvenue à l'Assistant Um Nyobe!
     
-    Cet assistant utilise l'intelligence artificielle pour répondre à vos questions sur Ruben Um Nyobe et l'histoire des maquis camerounais.
+    Cet assistant utilise l'intelligence artificielle pour répondre à vos questions sur Ruben Um Nyobe, l'UPC et l'histoire des maquis camerounais.
     
     Posez une question ci-dessous pour commencer la conversation.
     """)
