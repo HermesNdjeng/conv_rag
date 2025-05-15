@@ -96,7 +96,7 @@ with st.sidebar:
         "Température",
         min_value=0.0,
         max_value=1.0,
-        value=0.7,
+        value=0.0,
         step=0.1,
         help="Contrôle la créativité des réponses. Valeurs basses = réponses plus déterministes."
     )
