@@ -1,2 +1,13 @@
-./conv_rag/__pycache__/
-./conv_rag/logs/
+# Python cache files
+**/__pycache__/
+**/*.py[cod]
+
+# Logs
+conv_rag/logs/
+
+# Evaluation results
+results/
+
+# Environment files
+.env
+*.env
