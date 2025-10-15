@@ -1,0 +1,39 @@
+repos:
+  # General code quality hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace        # Remove trailing whitespace at end of lines
+      - id: end-of-file-fixer         # Ensure files end with a newline
+      - id: check-yaml                # Validate YAML syntax
+      - id: check-json                # Validate JSON syntax
+      - id: check-case-conflict       # Check for case conflicts in filenames
+      - id: check-merge-conflict      # Check for merge conflict markers
+      - id: debug-statements          # Detect leftover debug statements (print, pdb)
+      - id: mixed-line-ending         # Ensure consistent line endings (LF)
+      - id: check-ast                 # Check the abstract syntax tree for issues
+      - id: check-docstring-first
+      - id: check-xml                 # Validate XML syntax
+
+  # Ruff - Fast Python linter and formatter (replaces Black + flake8 + isort)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.9
+    hooks:
+      - id: ruff                      # Linting and import sorting
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format               # Formatting
+
+  # Pyright - Static type checker for Python
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.338
+    hooks:
+      - id: pyright                   # Type checking with enforcement
+
+# Exclude specific files/directories from pre-commit checks
+exclude: |
+  (?x)^(
+      data/.*|
+      \.ipynb_checkpoints/.*|
+      .*\.json|
+      .*\.html
+  )$

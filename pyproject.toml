@@ -31,3 +31,77 @@ matplotlib = "^3.10.3"
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "^4.3.0"
+ruff = "^0.1.9"
+pyright = "^1.1.338"
+
+# Ruff configuration
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+# Enable rule sets including import sorting
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "S",   # flake8-bandit (security)
+]
+
+ignore = [
+    "E203",  # whitespace before ':'
+    "W503",  # line break before binary operator
+    "S101",  # use of assert (common in tests)
+]
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".eggs",
+    "*.egg",
+    ".venv",
+    ".env",
+    "data",
+    ".ipynb_checkpoints",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# Configure import sorting (replaces isort configuration)
+[tool.ruff.isort]
+force-single-line = false
+force-sort-within-sections = false
+lines-after-imports = 2
+known-first-party = ["src", "temporal_notes"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+# Pyright configuration
+[tool.pyright]
+pythonVersion = "3.11"
+include = ["temporal_notes"]
+exclude = [
+    "**/__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "data",
+    "tests",
+    "notebooks",
+    ".ipynb_checkpoints"
+]
+
+# Type checking strictness
+typeCheckingMode = "strict"
