@@ -39,7 +39,7 @@ pyright = "^1.1.338"
 
 # Ruff configuration
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py311"
 
 # Enable rule sets including import sorting
@@ -57,7 +57,6 @@ select = [
 
 ignore = [
     "E203",  # whitespace before ':'
-    "W503",  # line break before binary operator
     "S101",  # use of assert (common in tests)
 ]
 
@@ -74,6 +73,11 @@ exclude = [
     ".ipynb_checkpoints",
 ]
 
+# Add this to enable auto-fixing
+fix = true
+fixable = ["ALL"]
+unfixable = []
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
@@ -85,13 +89,13 @@ line-ending = "auto"
 force-single-line = false
 force-sort-within-sections = false
 lines-after-imports = 2
-known-first-party = ["src", "temporal_notes"]
+known-first-party = ["conv_rag"]  # Update this to match your project
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 # Pyright configuration
 [tool.pyright]
 pythonVersion = "3.11"
-include = ["temporal_notes"]
+include = ["conv_rag"]  # Update this to match your project structure
 exclude = [
     "**/__pycache__",
     "build",

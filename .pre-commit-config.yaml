@@ -11,11 +11,10 @@ repos:
       - id: check-merge-conflict      # Check for merge conflict markers
       - id: debug-statements          # Detect leftover debug statements (print, pdb)
       - id: mixed-line-ending         # Ensure consistent line endings (LF)
-      - id: check-ast                 # Check the abstract syntax tree for issues
       - id: check-docstring-first
       - id: check-xml                 # Validate XML syntax
 
-  # Ruff - Fast Python linter and formatter (replaces Black + flake8 + isort)
+  # Ruff - Fast Python linter and formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.1.9
     hooks:
