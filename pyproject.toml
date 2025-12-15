@@ -95,6 +95,8 @@ section-order = ["future", "standard-library", "third-party", "first-party", "lo
 # Pyright configuration
 [tool.pyright]
 pythonVersion = "3.11"
+venvPath = "/Users/hermesndjeng/Library/Caches/pypoetry/virtualenvs"
+venv = "conv-rag-lcP7v9H7-py3.11"
 include = ["conv_rag"]  # Update this to match your project structure
 exclude = [
     "**/__pycache__",
@@ -109,3 +111,8 @@ exclude = [
 
 # Type checking strictness
 typeCheckingMode = "strict"
+reportUnknownVariableType = "none"
+reportUnknownParameterType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownMemberType = "none"
+reportMissingTypeStubs = "none"

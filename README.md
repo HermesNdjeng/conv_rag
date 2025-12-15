@@ -1,3 +1,9 @@
+
+[![image](https://img.shields.io/pypi/l/ruff/0.14.0.svg)](https://pypi.python.org/pypi/ruff)
+[![image](https://img.shields.io/pypi/pyversions/ruff/0.14.0.svg)](https://pypi.python.org/pypi/ruff)
+[![Actions status](https://github.com/astral-sh/ruff-vscode/workflows/CI/badge.svg)](https://github.com/astral-sh/ruff-vscode/actions)
+
+
 # Conv-RAG: Conversational Retrieval-Augmented Generation
 
 Conv-RAG is a conversational agent built with a Retrieval-Augmented Generation (RAG) architecture. It combines the power of large language models (LLMs) with document retrieval to provide accurate and context-aware answers. This project is designed to answer questions about Ruben Um Nyobe, the UPC, and the history of the Cameroonian maquis.
@@ -117,4 +123,3 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 - [LangChain](https://github.com/hwchase17/langchain) for retrieval and LLM integration.
 - [Streamlit](https://streamlit.io/) for the interactive interface.
 - OpenAI for GPT models.
-
