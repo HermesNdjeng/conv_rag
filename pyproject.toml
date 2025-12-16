@@ -89,15 +89,14 @@ line-ending = "auto"
 force-single-line = false
 force-sort-within-sections = false
 lines-after-imports = 2
-known-first-party = ["conv_rag"]  # Update this to match your project
+known-first-party = ["conv_rag"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 # Pyright configuration
 [tool.pyright]
 pythonVersion = "3.11"
-venvPath = "/Users/hermesndjeng/Library/Caches/pypoetry/virtualenvs"
-venv = "conv-rag-lcP7v9H7-py3.11"
-include = ["conv_rag"]  # Update this to match your project structure
+venvPath = "."
+venv = ".venv"
 exclude = [
     "**/__pycache__",
     "build",

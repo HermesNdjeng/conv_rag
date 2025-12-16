@@ -19,18 +19,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Install Poetry
       - name: Install Poetry
         run: |
           pip install poetry
           poetry --version
 
-      # Install project dependencies into Poetry env
       - name: Install dependencies
         run: |
           poetry install --no-interaction --no-root
 
-      # Run pre-commit using Poetry's environment
       - name: Run pre-commit
         run: |
           poetry run pre-commit run --all-files
