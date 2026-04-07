@@ -4,7 +4,6 @@ import tempfile
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
-from ocr_processor import OCRConfig, OCRProcessor
 from pydantic import BaseModel, Field
 from utils.logging_utils import setup_logger
 
@@ -60,16 +59,6 @@ class DocumentLoader:
 
         # Initialize OCR processor if enabled
         self.ocr_processor = None
-        if self.config.ocr_enabled:
-            ocr_config = OCRConfig(
-                languages=["fr", "en"],  # French and English
-                output_dir=self.config.ocr_output_dir,
-                gpu=True,  # Enable GPU if available
-            )
-            self.ocr_processor = OCRProcessor(config=ocr_config)
-            # Create OCR output directory
-            if self.config.ocr_output_dir:
-                os.makedirs(self.config.ocr_output_dir, exist_ok=True)
 
     def load_documents(self, file_path: str | None = None) -> LoadResult:
         """

@@ -1,169 +1,280 @@
-import os
-import tempfile
+"""
+PDF to Markdown Processor
 
-import easyocr  # type: ignore
-from pydantic import BaseModel, Field
+This application fetches PDF files from a remote MinIO bucket and converts them to Markdown format
+using the DeepSeek OCR API deployed on a VM. Each PDF file is then saved as a Markdown file in a
+different MinIO bucket.
+"""
+
+# TODO: Now we are waiting for the entire PDF to be processed before uploading
+# the markdown file. We can optimize this by streaming the PDF content to the
+# OCR API and uploading the markdown content as it is generated. This would
+# reduce the overall processing time and allow for faster access to the
+# converted files.
+
+import io
+import json
+import os
+import sys
+import tempfile
+import time
+from urllib.parse import urlparse
+
+import requests
+from dotenv import load_dotenv
+from minio import Minio
+from minio.error import S3Error
 from utils.logging_utils import setup_logger
 
 
 # Set up module-specific logger
 logger = setup_logger("ocr_processor")
 
-
-class OCRConfig(BaseModel):
-    """Configuration for the OCR processor"""
-
-    languages: list[str] = Field(
-        default=["fr", "en"],
-        description="Languages to detect in documents (fr for French, en for English)",
-    )
-    gpu: bool = Field(default=False, description="Whether to use GPU for OCR processing")
-    batch_size: int = Field(default=4, description="Batch size for OCR processing")
-    output_dir: str | None = Field(default=None, description="Directory to save OCR'd text files")
+# Load environment variables
+load_dotenv()
+api_base_url = os.getenv("OCR_URL")
+ocr_api_key = os.getenv("OCR_API_KEY")
 
 
-# Modifiez la classe OCRProcessor pour utiliser le GPU Mac
+class Colors:
+    """ANSI color codes for terminal output"""
+
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
 
 
-class OCRProcessor:
-    """Processes scanned documents with OCR to extract text"""
+class PDFToMarkdownProcessor:
+    """Processor for converting PDF files to Markdown using DeepSeek OCR API"""
 
-    def __init__(self, config: OCRConfig | None = None):
-        """
-        Initialize the OCR processor.
+    def __init__(
+        self,
+        api_base_url: str | None = api_base_url,
+        api_key: str | None = ocr_api_key,
+        minio_endpoint: str | None = os.getenv("MINIO_ENDPOINT"),
+        access_key: str | None = os.getenv("MINIO_ACCESS_KEY"),
+        secret_key: str | None = os.getenv("MINIO_SECRET_KEY"),
+        source_bucket: str | None = os.getenv("MINIO_SOURCE_BUCKET"),
+        output_bucket: str | None = os.getenv("MINIO_OUTPUT_BUCKET"),
+    ):
+        if not all([minio_endpoint, access_key, secret_key, source_bucket, output_bucket]):
+            raise ValueError("Missing required MinIO configuration in environment variables.")
 
-        Args:
-            config: OCR configuration
-        """
-        self.config = config or OCRConfig()
+        self.api_base_url = api_base_url
+        self.api_headers = {"x-api-key": api_key} if api_key else {}
+        self.source_bucket = source_bucket
+        self.output_bucket = output_bucket
 
-        # Détection automatique du GPU Mac
-        self.use_gpu = self._check_mac_gpu() if self.config.gpu else False
-        logger.info(
-            f"Initializing OCR processor with languages: {self.config.languages}"
-            f", GPU: {self.use_gpu}"
+        parsed = urlparse(minio_endpoint)
+        self.minio_client = Minio(
+            str(parsed.netloc),
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=parsed.scheme == "https",
         )
 
-        self.reader = None  # Lazy initialization to avoid loading models unnecessarily
+        self._test_minio_connection()
 
-        # Create output directory if specified
-        if self.config.output_dir:
-            os.makedirs(self.config.output_dir, exist_ok=True)
+        if not self._test_api_connection():
+            raise ConnectionError(f"Cannot connect to OCR API at {api_base_url}")
 
-    def _check_mac_gpu(self):
-        """Vérifie si le GPU Mac (Metal) est disponible pour PyTorch"""
+    def _test_minio_connection(self) -> None:
+        """Verify that the source and output buckets are accessible."""
         try:
-            import torch
+            for bucket in (self.source_bucket, self.output_bucket):
+                if bucket and not self.minio_client.bucket_exists(bucket):
+                    raise ConnectionError(f"MinIO bucket '{bucket}' does not exist.")
+            logger.info("MinIO connection successful — both buckets are accessible.")
+        except S3Error as e:
+            raise ConnectionError(f"MinIO connection failed: {e}") from e
 
-            # Vérifier si MPS est disponible (Mac avec Apple Silicon)
-            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                logger.info("GPU Apple Silicon (MPS) détecté et activé")
+    def _test_api_connection(self) -> bool:
+        """Test if the OCR API is accessible."""
+        try:
+            response = requests.get(
+                f"{self.api_base_url}/docs",
+                headers=self.api_headers,
+                timeout=5,
+                verify=False,  # noqa: S501
+            )
+            if response.status_code == 200:
+                logger.info("OCR API connection successful.")
                 return True
-            # Vérifier CUDA comme fallback
-            elif torch.cuda.is_available():
-                logger.info("GPU CUDA détecté et activé")
-                return True
-            else:
-                logger.info("Aucun GPU détecté, utilisation du CPU")
-                return False
-        except Exception as e:
-            logger.warning(f"Erreur lors de la vérification du GPU: {e}")
+            logger.error(f"OCR API returned status code: {response.status_code}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"OCR API connection failed: {e}")
             return False
 
-    def _init_reader(self):
-        """Initialize OCR reader if not already initialized"""
-        if self.reader is None:
-            logger.info("Loading OCR models, this may take a moment...")
-            try:
-                # Initialiser EasyOCR avec GPU si disponible
-                self.reader = easyocr.Reader(
-                    self.config.languages,
-                    gpu=self.use_gpu,
-                    model_storage_directory="data/ocr_models",
-                )
-                logger.info("OCR models loaded successfully")
-            except Exception as e:
-                logger.error(f"Error loading OCR models: {e}")
-                # Fallback to CPU if GPU fails
-                logger.info("Falling back to CPU mode")
-                self.reader = easyocr.Reader(
-                    self.config.languages, gpu=False, model_storage_directory="data/ocr_models"
-                )
-
-    def process_pdf(self, pdf_path: str) -> str:
-        """Process a PDF file with OCR to extract text."""
-        logger.info(f"Processing PDF with OCR: {pdf_path}")
-
-        # Initialize OCR reader
-        self._init_reader()
-
-        # Use PyMuPDF to convert PDF to images
-        import fitz  # type: ignore
-
-        # Create temporary directory for images
-        with tempfile.TemporaryDirectory() as temp_dir:
-            doc = fitz.open(pdf_path)
-            all_text = []
-
-            # Process each page
-            for i, page in enumerate(doc):  # type: ignore
-                logger.info(f"Processing page {i+1}/{len(doc)}")
-
-                # Convert page to image
-                pix = page.get_pixmap(matrix=fitz.Matrix(300 / 72, 300 / 72))
-                img_path = os.path.join(temp_dir, f"page_{i+1}.png")
-                pix.save(img_path)
-                if self.reader is None:
-                    raise RuntimeError("Reader was not initialized!")
-                # Process with OCR
-                result = self.reader.readtext(img_path)
-                page_text = "\n".join([text for _, text, _ in result])
-                all_text.append(f"=== Page {i+1} ===\n{page_text}")
-
-            # Combine and save results
-            full_text = "\n\n".join(all_text)
-
-            if self.config.output_dir:
-                output_path = os.path.join(
-                    self.config.output_dir, os.path.basename(pdf_path).replace(".pdf", ".txt")
-                )
-                with open(output_path, "w", encoding="utf-8") as f:
-                    f.write(full_text)
-                logger.info(f"Saved OCR text to {output_path}")
-
-            return full_text
-
-    def is_scanned_pdf(self, pdf_path: str, sample_pages: int = 3) -> bool:
+    def _call_ocr_api(self, pdf_path: str) -> str | None:
         """
-        Check if a PDF file is a scanned document by checking for extractable text.
+        Call the OCR API to process a PDF file.
 
         Args:
-            pdf_path: Path to the PDF file
-            sample_pages: Number of pages to sample
+            pdf_path: Local path to the PDF file.
 
         Returns:
-            True if the PDF is likely scanned, False otherwise
+            Markdown content string, or None if processing failed.
         """
-        import PyPDF2
+        try:
+            url = f"{self.api_base_url}/ocr/pdf"
+            logger.info(f"Sending PDF to OCR API: {url}")
 
-        logger.info(f"Checking if PDF is scanned: {pdf_path}")
+            with open(pdf_path, "rb") as pdf_file:
+                files = {"file": (os.path.basename(pdf_path), pdf_file, "application/pdf")}
+                data = {"prompt": "<image>\n<|grounding|>Convert the document to markdown."}
+                response = requests.post(
+                    url,
+                    headers=self.api_headers,
+                    files=files,
+                    data=data,
+                    timeout=4800,
+                    verify=False,  # noqa: S501
+                )
 
-        # Open the PDF
-        with open(pdf_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            num_pages = len(reader.pages)
+            if response.status_code != 200:
+                logger.error(f"OCR API error {response.status_code}: {response.text}")
+                return None
 
-            # Check a sample of pages
-            pages_to_check = min(sample_pages, num_pages)
-            total_text = 0
+            result = response.json()
 
-            for i in range(pages_to_check):
-                page = reader.pages[i]
-                text = page.extract_text() or ""
-                total_text += len(text.strip())
+            if isinstance(result, dict):
+                if "results" in result and isinstance(result["results"], list):
+                    pages = []
+                    for page in result["results"]:
+                        if isinstance(page, dict) and page.get("result"):
+                            pages.append(page["result"])
+                    return "\n\n<--- Page Split --->\n\n".join(pages)
 
-            # If there's very little text, it's likely a scanned document
-            avg_text_per_page = total_text / pages_to_check
-            logger.info(f"Average text per page: {avg_text_per_page} characters")
+                for field in ("markdown", "content", "text", "result", "output"):
+                    if field in result:
+                        return result[field]
 
-            return avg_text_per_page < 100  # Threshold for determining if it's scanned
+                return json.dumps(result, indent=2)
+
+            return str(result)
+
+        except Exception as e:
+            logger.error(f"Error calling OCR API for {pdf_path}: {e}")
+            return None
+
+    def convert_and_upload(self, object_name: str) -> bool:
+        """
+        Download a PDF from MinIO, convert it via OCR, and upload the Markdown result.
+
+        Args:
+            object_name: Object key of the PDF in the source bucket.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp_path = tmp.name
+
+            logger.info(f"Downloading '{object_name}' from bucket '{self.source_bucket}'")
+            if self.source_bucket:
+                self.minio_client.fget_object(self.source_bucket, object_name, tmp_path)
+            else:
+                logger.error("Source bucket is not configured.")
+                return False
+
+            markdown_content = self._call_ocr_api(tmp_path)
+            os.unlink(tmp_path)
+
+            if not markdown_content:
+                logger.error(f"OCR returned no content for '{object_name}'")
+                return False
+
+            stem = object_name.rsplit(".", 1)[0]
+            md_object_name = f"{stem}.md"
+            encoded = markdown_content.encode("utf-8")
+            if not self.output_bucket:
+                logger.error("Output bucket is not configured.")
+                return False
+            self.minio_client.put_object(
+                self.output_bucket,
+                md_object_name,
+                io.BytesIO(encoded),
+                length=len(encoded),
+                content_type="text/markdown",
+            )
+            logger.info(
+                f"The len of the markdown content for '{object_name}' is {len(encoded)} bytes"
+            )
+            logger.info(f"Uploaded '{md_object_name}' to bucket '{self.output_bucket}'")
+            return True
+
+        except S3Error as e:
+            logger.error(f"MinIO error processing '{object_name}': {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error processing '{object_name}': {e}")
+            return False
+
+    def scan_and_process_all_pdfs(self) -> list[str]:
+        """
+        List all PDFs in the source bucket and convert each one to Markdown.
+
+        Returns:
+            List of Markdown object names that were successfully uploaded.
+        """
+        if not self.source_bucket:
+            logger.error("Source bucket is not configured.")
+            return []
+        objects = list(self.minio_client.list_objects(self.source_bucket, recursive=True))
+        pdf_objects = [
+            obj.object_name
+            for obj in objects
+            if obj.object_name and obj.object_name.lower().endswith(".pdf")
+        ]
+
+        if not pdf_objects:
+            logger.info(f"No PDF files found in bucket '{self.source_bucket}'.")
+            return []
+
+        logger.info(f"Found {len(pdf_objects)} PDF(s) in '{self.source_bucket}'.")
+
+        results = []
+        for name in pdf_objects:
+            logger.info(f"Processing PDF: {name}")
+            start_time = time.time()
+            if self.convert_and_upload(name):
+                stem = name.rsplit(".", 1)[0]
+                results.append(f"{stem}.md")
+            end_time = time.time()
+            logger.info(f"Processing time for {name}: {end_time - start_time:.2f} seconds")
+
+        return results
+
+
+def main() -> None:
+    """Main function to run the PDF processor."""
+    source_bucket = os.getenv("MINIO_SOURCE_BUCKET")
+    print(f"{Colors.BLUE}PDF to Markdown Processor{Colors.RESET}")
+    print(f"{Colors.YELLOW}Scanning MinIO bucket '{source_bucket}'...{Colors.RESET}")
+
+    try:
+        processor = PDFToMarkdownProcessor()
+        markdown_files = processor.scan_and_process_all_pdfs()
+
+        if markdown_files:
+            print(
+                f"\n{Colors.GREEN}Successfully converted "
+                f"{len(markdown_files)} PDF(s) to Markdown:{Colors.RESET}"
+            )
+            for md_file in markdown_files:
+                print(f"  - {md_file}")
+        else:
+            print(f"{Colors.YELLOW}No PDF files were processed.{Colors.RESET}")
+
+    except Exception as e:
+        logger.error(f"Application error: {e}")
+        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
