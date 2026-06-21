@@ -3,7 +3,7 @@
 **/*.py[cod]
 
 # Logs
-conv_rag/logs/
+rag/logs/
 
 # Evaluation results
 results/
