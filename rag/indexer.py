@@ -10,6 +10,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 from redis.exceptions import ResponseError
 
+from rag.constants import RAG_INDEX_SCHEMA
 from rag.schemas import IndexResult, VectorStoreConfig
 from rag.utils.logging_utils import setup_logger
 
@@ -71,6 +72,7 @@ class RedisIndexer:
             embedding=self.embeddings,
             redis_url=self.config.redis_url,
             index_name=index_name,
+            index_schema=RAG_INDEX_SCHEMA,
             keys=keys,
         )
         logger.info(f"Upserted {len(documents)} docs into '{index_name}'")
