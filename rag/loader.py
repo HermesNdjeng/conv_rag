@@ -17,36 +17,13 @@ from typing import Any
 
 from langchain.schema import Document
 from langchain.text_splitter import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
-from pydantic import BaseModel, Field
 
-from conv_rag.utils.logging_utils import setup_logger
-
-
-logger = setup_logger("rag.loader")
-
-_HEADERS_TO_SPLIT_ON: list[tuple[str, str]] = [
-    ("#", "h1"),
-    ("##", "h2"),
-    ("###", "h3"),
-    ("####", "h4"),
-]
+from rag.constants import HEADERS_TO_SPLIT_ON
+from rag.schemas import LoaderConfig
+from rag.utils.logging_utils import setup_logger
 
 
-class LoaderConfig(BaseModel):
-    """Configuration for the document loader."""
-
-    max_chunk_size: int = Field(
-        default=2000,
-        description="Maximum chunk size in characters; sections below this are kept as-is",
-    )
-    chunk_overlap: int = Field(
-        default=200,
-        description="Overlap used only when a section exceeds max_chunk_size and must be split",
-    )
-    strip_headers: bool = Field(
-        default=False,
-        description="Strip header lines from chunk content (headers are still kept in metadata)",
-    )
+logger = setup_logger("loader")
 
 
 class DocumentLoader:
@@ -55,7 +32,7 @@ class DocumentLoader:
     def __init__(self, config: LoaderConfig | None = None) -> None:
         self.config = config or LoaderConfig()
         self._md_splitter = MarkdownHeaderTextSplitter(
-            headers_to_split_on=_HEADERS_TO_SPLIT_ON,
+            headers_to_split_on=HEADERS_TO_SPLIT_ON,
             strip_headers=self.config.strip_headers,
         )
         self._char_splitter = RecursiveCharacterTextSplitter(
@@ -69,31 +46,51 @@ class DocumentLoader:
         )
 
     def _split(self, text: str, metadata: dict[str, Any]) -> list[Document]:
-        """Split by Markdown headers; fall back to character split only for oversized sections."""
+        """Split by Markdown headers; fall back to character split only for oversized sections.
+
+        Each chunk is stamped with a 0-based ``chunk_index`` so the indexer can build a
+        stable ``{document_id}:{chunk_index}`` key, making re-indexing idempotent.
+        """
         chunks: list[Document] = []
         for chunk in self._md_splitter.split_text(text):
             if len(chunk.page_content) > self.config.max_chunk_size:
                 chunks.extend(self._char_splitter.split_documents([chunk]))
             else:
                 chunks.append(chunk)
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             chunk.metadata.update(metadata)
+            chunk.metadata["chunk_index"] = i
         return chunks
 
-    def load_from_bytes(self, content: bytes, metadata: dict[str, Any]) -> list[Document]:
-        """Primary entry point for the worker pipeline (content streamed from MinIO)."""
+    def load_from_bytes(
+        self, content: bytes, document_id: str, extra_metadata: dict[str, Any] | None = None
+    ) -> list[Document]:
+        """Primary entry point for the worker pipeline (content streamed from MinIO).
+
+        Args:
+            content: Raw Markdown bytes.
+            document_id: Stable identifier for the source document (the MinIO object
+                path). The indexer uses it to build idempotent per-chunk keys.
+            extra_metadata: Optional extra metadata merged into every chunk.
+        """
         text = content.decode("utf-8")
+        metadata: dict[str, Any] = {"document_id": document_id, "source": document_id}
+        if extra_metadata:
+            metadata.update(extra_metadata)
         chunks = self._split(text, metadata)
-        logger.info(f"{len(chunks)} chunks — source: {metadata.get('source', 'unknown')}")
+        logger.info(f"{len(chunks)} chunks — document_id: {document_id}")
         return chunks
 
     def load_from_file(
         self, file_path: str, extra_metadata: dict[str, Any] | None = None
     ) -> list[Document]:
-        """Load and chunk a Markdown file from the local filesystem."""
+        """Load and chunk a Markdown file from the local filesystem.
+
+        The file path doubles as ``document_id`` so local re-indexing is idempotent too.
+        """
         with open(file_path, encoding="utf-8") as f:
             text = f.read()
-        metadata: dict[str, Any] = {"source": file_path}
+        metadata: dict[str, Any] = {"document_id": file_path, "source": file_path}
         if extra_metadata:
             metadata.update(extra_metadata)
         chunks = self._split(text, metadata)
