@@ -49,18 +49,18 @@ def test_strip_headers_removes_header_from_content() -> None:
     assert chunks[0].metadata.get("h1") == "My Header"
 
 
-def test_load_from_bytes_decodes_and_chunks(loader: DocumentLoader) -> None:
+def test_load_from_bytes_sets_document_id_and_source(loader: DocumentLoader) -> None:
     content = b"# Header\n\nContent here."
-    chunks = loader.load_from_bytes(content, {"source": "bucket/doc.md"})
+    chunks = loader.load_from_bytes(content, document_id="bucket/doc.md")
     assert len(chunks) > 0
+    assert all(c.metadata["document_id"] == "bucket/doc.md" for c in chunks)
     assert all(c.metadata["source"] == "bucket/doc.md" for c in chunks)
 
 
-def test_load_from_bytes_same_chunks_as_split(loader: DocumentLoader) -> None:
+def test_load_from_bytes_stamps_chunk_index(loader: DocumentLoader) -> None:
     md = "# Title\n\nParagraph.\n\n## Sub\n\nMore text."
-    via_bytes = loader.load_from_bytes(md.encode(), {"source": "x"})
-    via_split = loader._split(md, {"source": "x"})
-    assert len(via_bytes) == len(via_split)
+    chunks = loader.load_from_bytes(md.encode(), document_id="x")
+    assert [c.metadata["chunk_index"] for c in chunks] == list(range(len(chunks)))
 
 
 def test_load_from_file_sets_source_to_path(
