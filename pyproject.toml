@@ -26,6 +26,7 @@ pypdf2 = "^3.0.1"
 pymupdf = "^1.25.5"
 matplotlib = "^3.10.3"
 pytest = "^9.1.0"
+redis = "^8.0.0"
 
 
 
