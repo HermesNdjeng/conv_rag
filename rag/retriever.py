@@ -11,9 +11,16 @@ logger = setup_logger("retriever")
 
 
 class DocumentRetriever:
-    def __init__(self, config: RetrieverConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: RetrieverConfig | None = None,
+        *,
+        embeddings: HuggingFaceEmbeddings | None = None,
+    ) -> None:
         self.config = config or RetrieverConfig()
-        self.embeddings = HuggingFaceEmbeddings(model_name=self.config.embedding_model_name)
+        self.embeddings = embeddings or HuggingFaceEmbeddings(
+            model_name=self.config.embedding_model_name
+        )
         logger.info(f"DocumentRetriever ready — threshold={self.config.score_threshold}")
 
     def retrieve(self, query: str, indexes: list[str]) -> list[Document]:
