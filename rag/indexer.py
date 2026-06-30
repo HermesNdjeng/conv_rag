@@ -23,10 +23,18 @@ _DELETE_PAGE_SIZE = 500
 class RedisIndexer:
     """Indexes and manages documents in Redis vector store indexes."""
 
-    def __init__(self, config: VectorStoreConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: VectorStoreConfig | None = None,
+        *,
+        client: redis_lib.Redis | None = None,
+        embeddings: HuggingFaceEmbeddings | None = None,
+    ) -> None:
         self.config = config or VectorStoreConfig()
-        self.embeddings = HuggingFaceEmbeddings(model_name=self.config.embedding_model_name)
-        self._client = redis_lib.from_url(self.config.redis_url)
+        self.embeddings = embeddings or HuggingFaceEmbeddings(
+            model_name=self.config.embedding_model_name
+        )
+        self._client = client or redis_lib.from_url(self.config.redis_url)
         logger.info(f"RedisIndexer connected — model={self.config.embedding_model_name}")
 
     @staticmethod
@@ -108,7 +116,7 @@ class RedisIndexer:
             try:
                 results = cast(Result, self._client.ft(index_name).search(query))
             except ResponseError as exc:
-                logger.warning(f"Search on index '{index_name}' failed (missing index?): {exc}")
+                logger.warning(f"Search on index '{index_name}' failed: {exc}")
                 return
             batch = [doc.id for doc in results.docs]
             ids.extend(batch)
