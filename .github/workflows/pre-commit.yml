@@ -15,14 +15,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install Poetry
         run: |
           pip install poetry
           poetry --version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: poetry
 
       - name: Install dependencies
         run: |
