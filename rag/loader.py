@@ -15,8 +15,8 @@ This module has no dependency on FastAPI, ARQ, or the worker layer.
 
 from typing import Any
 
-from langchain.schema import Document
-from langchain.text_splitter import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 from rag.constants import HEADERS_TO_SPLIT_ON
 from rag.schemas import LoaderConfig

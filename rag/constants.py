@@ -13,19 +13,15 @@ DEFAULT_SCORE_THRESHOLD: float = 0.3
 
 GLOBAL_INDEX: str = "global"
 
-# Explicit index schema shared by the indexer (at index creation) and the retriever
-# (when reconnecting via from_existing_index). Must mirror the metadata the loader
-# stamps on each chunk. Keep in sync with HEADERS_TO_SPLIT_ON + loader metadata.
-RAG_INDEX_SCHEMA: dict[str, list[dict[str, str]]] = {
-    "tag": [
-        {"name": "document_id"},
-        {"name": "source"},
-        {"name": "h1"},
-        {"name": "h2"},
-        {"name": "h3"},
-        {"name": "h4"},
-    ],
-    "numeric": [
-        {"name": "chunk_index"},
-    ],
-}
+# Metadata fields indexed by the indexer (langchain_redis `metadata_schema`), mirroring
+# the metadata the loader stamps on each chunk. Fields not listed here cannot be
+# filtered on. Keep in sync with HEADERS_TO_SPLIT_ON + loader metadata.
+RAG_INDEX_SCHEMA: list[dict[str, str]] = [
+    {"name": "document_id", "type": "tag"},
+    {"name": "source", "type": "tag"},
+    {"name": "h1", "type": "tag"},
+    {"name": "h2", "type": "tag"},
+    {"name": "h3", "type": "tag"},
+    {"name": "h4", "type": "tag"},
+    {"name": "chunk_index", "type": "numeric"},
+]

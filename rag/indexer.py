@@ -1,14 +1,13 @@
 from typing import cast
 
 import redis as redis_lib
-from langchain.schema import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Redis as RedisVectorStore
-from langchain_community.vectorstores.redis import RedisTag
-from langchain_community.vectorstores.redis.filters import RedisFilterExpression
+from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_redis import RedisConfig, RedisVectorStore
 from redis.commands.search.query import Query
 from redis.commands.search.result import Result
 from redis.exceptions import ResponseError
+from redisvl.query.filter import FilterExpression, Tag
 
 from rag.constants import RAG_INDEX_SCHEMA
 from rag.schemas import IndexResult, VectorStoreConfig
@@ -75,12 +74,15 @@ class RedisIndexer:
                 )
             keys.append(f"{document_id}:{chunk_index}")
 
-        RedisVectorStore.from_documents(
-            documents=documents,
-            embedding=self.embeddings,
-            redis_url=self.config.redis_url,
+        config = RedisConfig(
             index_name=index_name,
-            index_schema=RAG_INDEX_SCHEMA,
+            redis_url=self.config.redis_url,
+            metadata_schema=RAG_INDEX_SCHEMA,
+        )
+        RedisVectorStore.from_documents(
+            documents,
+            self.embeddings,
+            config=config,
             keys=keys,
         )
         logger.info(f"Upserted {len(documents)} docs into '{index_name}'")
@@ -103,10 +105,10 @@ class RedisIndexer:
         if not where:
             raise ValueError("`where` cannot be empty — refusing to delete the entire index")
 
-        # Combine the filters: @k1:{v1} @k2:{v2} ... (RedisTag handles value escaping).
-        filter_expr: RedisFilterExpression | None = None
+        # Combine the filters: @k1:{v1} @k2:{v2} ... (Tag handles value escaping).
+        filter_expr: FilterExpression | None = None
         for k, v in where.items():
-            expr = RedisTag(k) == v
+            expr = Tag(k) == v
             filter_expr = expr if filter_expr is None else filter_expr & expr
 
         ids: list[str] = []

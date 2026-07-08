@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from langchain.schema import Document
+from langchain_core.documents import Document
 from redis.exceptions import ResponseError
 
 from rag import indexer as indexer_module
@@ -48,7 +48,7 @@ def test_upsert_builds_stable_keys_and_returns_count(
     assert result.index_name == "user_42"
     assert result.document_count == 2
     assert from_documents.call_args.kwargs["keys"] == ["u/report.md:0", "u/report.md:1"]
-    assert from_documents.call_args.kwargs["index_name"] == "user_42"
+    assert from_documents.call_args.kwargs["config"].index_name == "user_42"
 
 
 def test_delete_empty_where_raises(index: RedisIndexer, client: MagicMock) -> None:

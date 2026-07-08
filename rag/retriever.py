@@ -1,8 +1,7 @@
-from langchain.schema import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Redis as RedisVectorStore
+from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_redis import RedisVectorStore
 
-from rag.constants import RAG_INDEX_SCHEMA
 from rag.schemas import RetrieverConfig
 from rag.utils.logging_utils import setup_logger
 
@@ -29,10 +28,9 @@ class DocumentRetriever:
         for index_name in indexes:
             try:
                 store = RedisVectorStore.from_existing_index(
+                    index_name=index_name,
                     embedding=self.embeddings,
                     redis_url=self.config.redis_url,
-                    index_name=index_name,
-                    schema=RAG_INDEX_SCHEMA,
                 )
                 results.extend(store.similarity_search_with_relevance_scores(query, k=50))
             except Exception as exc:

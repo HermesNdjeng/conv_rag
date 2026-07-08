@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from rag import retriever as retriever_module
 from rag.retriever import DocumentRetriever
