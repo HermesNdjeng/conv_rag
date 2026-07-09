@@ -1,6 +1,8 @@
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_redis import RedisVectorStore
+from redis.exceptions import RedisError
+from redisvl.exceptions import RedisVLError
 
 from rag.schemas import RetrieverConfig
 from rag.utils.logging_utils import setup_logger
@@ -32,8 +34,13 @@ class DocumentRetriever:
                     embedding=self.embeddings,
                     redis_url=self.config.redis_url,
                 )
-                results.extend(store.similarity_search_with_relevance_scores(query, k=50))
-            except Exception as exc:
+                # langchain_redis returns cosine distance (0 = identical); convert to a
+                # relevance score (higher = more similar) for the score_threshold below.
+                results.extend(
+                    (doc, 1.0 - distance)
+                    for doc, distance in store.similarity_search_with_score(query, k=50)
+                )
+            except (RedisVLError, RedisError) as exc:
                 logger.info(f"Index '{index_name}' unavailable — skipping: {exc}")
 
         filtered = sorted(
