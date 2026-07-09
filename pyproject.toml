@@ -98,6 +98,12 @@ lines-after-imports = 2
 known-first-party = ["conv_rag"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
+# Pytest configuration
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs a live Redis Stack (skipped if unavailable)",
+]
+
 # Pyright configuration
 [tool.pyright]
 pythonVersion = "3.11"

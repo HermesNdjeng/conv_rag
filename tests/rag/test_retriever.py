@@ -2,16 +2,18 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.documents import Document
+from redisvl.exceptions import RedisSearchError
 
 from rag import retriever as retriever_module
 from rag.retriever import DocumentRetriever
 
 
 def _store(*scored_docs: tuple[str, float]) -> MagicMock:
-    """A fake vector store whose similarity search returns the given (text, score) pairs."""
+    """A fake vector store; args are (text, relevance) — stored as the cosine distance
+    (1 - relevance) that langchain_redis actually returns from similarity_search_with_score."""
     store = MagicMock()
-    store.similarity_search_with_relevance_scores.return_value = [
-        (Document(page_content=text), score) for text, score in scored_docs
+    store.similarity_search_with_score.return_value = [
+        (Document(page_content=text), 1.0 - relevance) for text, relevance in scored_docs
     ]
     return store
 
@@ -50,7 +52,7 @@ def test_retrieve_skips_unavailable_index(
 ) -> None:
     def from_existing_index(**kwargs: object) -> MagicMock:
         if kwargs["index_name"] == "missing":
-            raise ValueError("no such index")
+            raise RedisSearchError("Unknown index name")
         return _store(("hit", 0.8))
 
     monkeypatch.setattr(
