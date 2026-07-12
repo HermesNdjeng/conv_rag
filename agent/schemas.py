@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class AgentConfig(BaseModel):
     model_name: str = Field(default="gemini-2.5-flash")
+    model_provider: str = Field(default="google_genai")
     temperature: float = Field(default=0.0)
     max_iterations: int = Field(default=6)
 
