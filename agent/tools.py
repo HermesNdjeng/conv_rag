@@ -1,7 +1,8 @@
 from typing import Annotated
 
 from langchain_core.tools import BaseTool, tool
-from langgraph.prebuilt import InjectedState
+from langgraph.prebuilt import InjectedState, InjectedStore
+from langgraph.store.base import BaseStore
 
 from rag.constants import GLOBAL_INDEX
 from rag.indexer import RedisIndexer
@@ -28,3 +29,20 @@ def make_search_knowledge(retriever: DocumentRetriever) -> BaseTool:
         )
 
     return search_knowledge
+
+
+@tool
+def recall_memory(
+    query: str,
+    user_id: Annotated[str, InjectedState("user_id")],
+    store: Annotated[BaseStore, InjectedStore()],
+) -> str:
+    """Recall relevant memories from earlier conversations with this user.
+
+    Use this when the current question may build on something discussed before, or to
+    reuse context, facts, or conclusions established in a past exchange.
+    """
+    items = store.search(("episodes", user_id), query=query, limit=5)
+    if not items:
+        return "No relevant past memories."
+    return "\n\n".join(f"[memory] {item.value['text']}" for item in items)
