@@ -6,7 +6,11 @@ from langchain_core.documents import Document
 from redis.exceptions import ResponseError
 
 from rag import indexer as indexer_module
-from rag.exceptions import EmbeddingModelMismatchError
+from rag.exceptions import (
+    EmbeddingModelMismatchError,
+    EmptyDeleteFilterError,
+    MissingChunkMetadataError,
+)
 from rag.indexer import RedisIndexer
 
 
@@ -30,7 +34,7 @@ def test_upsert_empty_list_returns_zero_without_writing(
 
 def test_upsert_missing_metadata_raises(index: RedisIndexer) -> None:
     doc = Document(page_content="x", metadata={"document_id": "doc"})  # no chunk_index
-    with pytest.raises(ValueError, match="document_id.*chunk_index"):
+    with pytest.raises(MissingChunkMetadataError):
         index.upsert([doc], "global")
 
 
@@ -53,7 +57,7 @@ def test_upsert_builds_stable_keys_and_returns_count(
 
 
 def test_delete_empty_where_raises(index: RedisIndexer, client: MagicMock) -> None:
-    with pytest.raises(ValueError, match="cannot be empty"):
+    with pytest.raises(EmptyDeleteFilterError):
         index.delete_by_metadata("user_42", {})
     client.delete.assert_not_called()
 

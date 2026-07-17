@@ -10,7 +10,11 @@ from redis.exceptions import ResponseError
 from redisvl.query.filter import FilterExpression, Tag
 
 from rag.constants import INDEX_META_KEY, RAG_INDEX_SCHEMA
-from rag.exceptions import EmbeddingModelMismatchError
+from rag.exceptions import (
+    EmbeddingModelMismatchError,
+    EmptyDeleteFilterError,
+    MissingChunkMetadataError,
+)
 from rag.schemas import IndexResult, VectorStoreConfig
 from rag.utils.logging_utils import setup_logger
 
@@ -58,7 +62,7 @@ class RedisIndexer:
             IndexResult with the index name and number of documents stored.
 
         Raises:
-            ValueError: If any document lacks ``document_id`` or ``chunk_index``.
+            MissingChunkMetadataError: If any document lacks ``document_id`` or ``chunk_index``.
         """
         if not documents:
             logger.warning(f"upsert called with empty list for '{index_name}'")
@@ -69,7 +73,7 @@ class RedisIndexer:
             document_id = doc.metadata.get("document_id")
             chunk_index = doc.metadata.get("chunk_index")
             if document_id is None or chunk_index is None:
-                raise ValueError(
+                raise MissingChunkMetadataError(
                     "Each document needs 'document_id' and 'chunk_index' in metadata to "
                     f"build a stable key; got metadata keys {list(doc.metadata)}"
                 )
@@ -115,10 +119,12 @@ class RedisIndexer:
             where: Metadata filter, e.g. {'document_id': 'user_42/report.md'}.
 
         Raises:
-            ValueError: If *where* is empty (would otherwise match every document).
+            EmptyDeleteFilterError: If *where* is empty (would otherwise match every document).
         """
         if not where:
-            raise ValueError("`where` cannot be empty — refusing to delete the entire index")
+            raise EmptyDeleteFilterError(
+                "`where` cannot be empty — refusing to delete the entire index"
+            )
 
         # Combine the filters: @k1:{v1} @k2:{v2} ... (Tag handles value escaping).
         filter_expr: FilterExpression | None = None
