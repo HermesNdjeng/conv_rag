@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from redis.exceptions import ResponseError
 
 from rag import indexer as indexer_module
+from rag.exceptions import EmbeddingModelMismatchError
 from rag.indexer import RedisIndexer
 
 
@@ -108,3 +109,10 @@ def test_delete_paginates_until_short_batch(
     offsets = [c.args[0]._offset for c in client.ft.return_value.search.call_args_list]
     assert offsets == [0, 2, 4]
     client.delete.assert_called_once_with("a:0", "a:1", "b:0", "b:1", "c:0")
+
+
+def test_upsert_refuses_model_mismatch(index: RedisIndexer, client: MagicMock) -> None:
+    client.hget.return_value = b"other-model"  # index built with a different embedding model
+    doc = Document(page_content="a", metadata={"document_id": "d", "chunk_index": 0})
+    with pytest.raises(EmbeddingModelMismatchError):
+        index.upsert([doc], "user_42")

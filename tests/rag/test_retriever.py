@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 from redisvl.exceptions import RedisSearchError
 
 from rag import retriever as retriever_module
+from rag.exceptions import EmbeddingModelMismatchError
 from rag.retriever import DocumentRetriever
 
 
@@ -62,3 +63,9 @@ def test_retrieve_skips_unavailable_index(
     docs = retriever.retrieve("q", ["missing", "global"])
 
     assert [d.page_content for d in docs] == ["hit"]
+
+
+def test_retrieve_refuses_model_mismatch(retriever: DocumentRetriever, client: MagicMock) -> None:
+    client.hget.return_value = b"other-model"  # index built with a different embedding model
+    with pytest.raises(EmbeddingModelMismatchError):
+        retriever.retrieve("q", ["global"])

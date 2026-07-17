@@ -14,7 +14,9 @@ def config() -> VectorStoreConfig:
 
 @pytest.fixture
 def client() -> MagicMock:
-    return MagicMock()
+    c = MagicMock()
+    c.hget.return_value = None  # no stored embedding model by default
+    return c
 
 
 @pytest.fixture
@@ -23,8 +25,8 @@ def index(config: VectorStoreConfig, client: MagicMock) -> RedisIndexer:
 
 
 @pytest.fixture
-def retriever() -> DocumentRetriever:
+def retriever(client: MagicMock) -> DocumentRetriever:
     config = RetrieverConfig(
         redis_url="redis://test", embedding_model_name="fake-model", score_threshold=0.5
     )
-    return DocumentRetriever(config=config, embeddings=MagicMock())
+    return DocumentRetriever(config=config, embeddings=MagicMock(), client=client)
