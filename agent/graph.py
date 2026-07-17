@@ -4,13 +4,15 @@ from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 
 from agent.prompts import SYSTEM_PROMPT
 from agent.schemas import AgentConfig, AgentState
-from agent.tools import make_search_knowledge
+from agent.tools import make_search_knowledge, recall_memory
 from rag.retriever import DocumentRetriever
 
 
@@ -32,11 +34,13 @@ def build_agent(
     *,
     llm: BaseChatModel | None = None,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
 ) -> CompiledStateGraph[Any, Any, Any, Any]:
-    """Assemble the ReAct agent: an LLM bound to search_knowledge, looping until it answers.
+    """Assemble the ReAct agent: an LLM bound to the tools, looping until it answers.
 
     The provider is chosen by config (model_name/model_provider) via init_chat_model, or an
-    LLM can be injected directly — so nothing here is tied to a specific provider.
+    LLM can be injected directly — so nothing here is tied to a specific provider. recall_memory
+    is only offered when a store is provided (episodic memory).
     """
     config = config or AgentConfig()
     llm = llm or init_chat_model(
@@ -44,12 +48,16 @@ def build_agent(
         model_provider=config.model_provider,
         temperature=config.temperature,
     )
+    tools: list[BaseTool] = [make_search_knowledge(retriever)]
+    if store is not None:
+        tools.append(recall_memory)
     return create_agent(
         llm,
-        tools=[make_search_knowledge(retriever)],
+        tools=tools,
         system_prompt=SYSTEM_PROMPT,
         state_schema=AgentState,  # type: ignore
         checkpointer=checkpointer,
+        store=store,
     )
 
 
