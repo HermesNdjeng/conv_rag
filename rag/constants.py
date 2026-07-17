@@ -13,6 +13,10 @@ DEFAULT_SCORE_THRESHOLD: float = 0.3
 
 GLOBAL_INDEX: str = "global"
 
+# Redis hash holding per-index metadata; the embedding model it was built with is stored here
+# so retrieval can refuse to query an index with a mismatched model (silently wrong otherwise).
+INDEX_META_KEY: str = "rag:meta:{}"
+
 # Metadata fields indexed by the indexer (langchain_redis `metadata_schema`), mirroring
 # the metadata the loader stamps on each chunk. Fields not listed here cannot be
 # filtered on. Keep in sync with HEADERS_TO_SPLIT_ON + loader metadata.

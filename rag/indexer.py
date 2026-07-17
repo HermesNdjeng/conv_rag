@@ -9,7 +9,8 @@ from redis.commands.search.result import Result
 from redis.exceptions import ResponseError
 from redisvl.query.filter import FilterExpression, Tag
 
-from rag.constants import RAG_INDEX_SCHEMA
+from rag.constants import INDEX_META_KEY, RAG_INDEX_SCHEMA
+from rag.exceptions import EmbeddingModelMismatchError
 from rag.schemas import IndexResult, VectorStoreConfig
 from rag.utils.logging_utils import setup_logger
 
@@ -74,6 +75,17 @@ class RedisIndexer:
                 )
             keys.append(f"{document_id}:{chunk_index}")
 
+        stored_model = self._client.hget(INDEX_META_KEY.format(index_name), "embedding_model")
+        if stored_model is not None:
+            stored_model = (
+                stored_model.decode() if isinstance(stored_model, bytes) else stored_model
+            )
+            if stored_model != self.config.embedding_model_name:
+                raise EmbeddingModelMismatchError(
+                    f"Index '{index_name}' was built with embedding model '{stored_model}', "
+                    f"refusing to re-index with '{self.config.embedding_model_name}'."
+                )
+
         config = RedisConfig(
             index_name=index_name,
             redis_url=self.config.redis_url,
@@ -84,6 +96,9 @@ class RedisIndexer:
             self.embeddings,
             config=config,
             keys=keys,
+        )
+        self._client.hset(
+            INDEX_META_KEY.format(index_name), "embedding_model", self.config.embedding_model_name
         )
         logger.info(f"Upserted {len(documents)} docs into '{index_name}'")
         return IndexResult(index_name=index_name, document_count=len(documents))
