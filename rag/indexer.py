@@ -152,3 +152,25 @@ class RedisIndexer:
             logger.info(f"Deleted {len(ids)} docs from '{index_name}' matching {where}")
         else:
             logger.info(f"No docs found in '{index_name}' matching {where}")
+
+    def list_document_ids(self, index_name: str) -> set[str]:
+        """Return the distinct ``document_id`` values currently indexed in index_name.
+
+        Returns an empty set if the index does not exist.
+        """
+        ids: set[str] = set()
+        offset = 0
+        while True:
+            query = Query("*").return_fields("document_id").paging(offset, _DELETE_PAGE_SIZE)
+            try:
+                results = cast(Result, self._client.ft(index_name).search(query))
+            except ResponseError:
+                return ids
+            for doc in results.docs:
+                document_id = getattr(doc, "document_id", None)
+                if document_id is not None:
+                    ids.add(document_id.decode() if isinstance(document_id, bytes) else document_id)
+            if len(results.docs) < _DELETE_PAGE_SIZE:
+                break
+            offset += _DELETE_PAGE_SIZE
+        return ids
