@@ -5,7 +5,7 @@ from langchain_redis import RedisVectorStore
 from redis.exceptions import RedisError
 from redisvl.exceptions import RedisVLError
 
-from rag.constants import INDEX_META_KEY
+from rag.constants import DEFAULT_TOP_K, INDEX_META_KEY
 from rag.exceptions import EmbeddingModelMismatchError
 from rag.schemas import RetrieverConfig
 from rag.utils.logging_utils import setup_logger
@@ -52,7 +52,7 @@ class DocumentRetriever:
                 # relevance score (higher = more similar) for the score_threshold below.
                 results.extend(
                     (doc, 1.0 - distance)
-                    for doc, distance in store.similarity_search_with_score(query, k=50)
+                    for doc, distance in store.similarity_search_with_score(query, k=DEFAULT_TOP_K)
                 )
             except (RedisVLError, RedisError) as exc:
                 logger.info(f"Index '{index_name}' unavailable — skipping: {exc}")
@@ -61,7 +61,7 @@ class DocumentRetriever:
             [(doc, score) for doc, score in results if score >= self.config.score_threshold],
             key=lambda t: t[1],
             reverse=True,
-        )
+        )[:DEFAULT_TOP_K]
 
         logger.info(f"Retrieved {len(filtered)} docs from {indexes}")
         return [doc for doc, _ in filtered]
