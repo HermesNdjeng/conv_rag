@@ -4,6 +4,11 @@ Skipped automatically unless a Redis Stack (RediSearch) is reachable at REDIS_UR
 Run explicitly with:  pytest -m integration
 """
 
+# TODO: add an integration test for the ingestion pipeline (rag.pipeline.ingest_bucket):
+# ingest a real MinIO bucket into Redis, assert the index, remove an object, re-sync,
+# and assert the orphan is pruned. The unit tests only cover the control-flow branches.
+
+
 import contextlib
 import os
 
