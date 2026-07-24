@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Any
 
 from langchain.agents import create_agent
@@ -9,6 +10,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
+from langgraph.types import StreamMode
 
 from agent.prompts import SYSTEM_PROMPT
 from agent.schemas import AgentConfig, AgentState
@@ -78,4 +80,41 @@ def run_agent(
             "configurable": {"thread_id": thread_id},
             "recursion_limit": 2 * config.max_iterations + 1,
         },
+    )
+
+
+def stream_agent(
+    agent: CompiledStateGraph[Any, Any, Any, Any],
+    *,
+    user_id: str,
+    message: str,
+    thread_id: str,
+    config: AgentConfig | None = None,
+    stream_mode: StreamMode | list[StreamMode] = "updates",
+) -> Iterator[Any]:
+    """Stream one turn's events — reusable by the CLI (tool visibility) and the app frontend
+    (progressive response and tool indicators).
+
+    Args:
+        agent: The compiled agent graph.
+        user_id: Identifies the user, for memory scoping.
+        message: The user's message for this turn.
+        thread_id: Selects the conversation (working memory).
+        config: Agent configuration; defaults to AgentConfig().
+        stream_mode: LangGraph stream mode — "updates" for per-node events (tool calls),
+            "messages" for LLM token streaming, or a list of both.
+
+    Yields:
+        Whatever the chosen stream_mode emits (per-node update dicts for "updates";
+        (message_chunk, metadata) tuples for "messages").
+    """
+    config = config or AgentConfig()
+    state = AgentState(user_id=user_id, messages=[HumanMessage(content=message)])
+    return agent.stream(
+        state,
+        {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": 2 * config.max_iterations + 1,
+        },
+        stream_mode=stream_mode,
     )
