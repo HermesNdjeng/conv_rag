@@ -1,12 +1,16 @@
 import logging
-import os
-from datetime import datetime
 
 import colorlog
 
 
+# TODO(prod): 12-factor logging refactor at deployment time — replace setup_logger with a single
+# configure_logging() called once at startup + logging.getLogger(__name__) in modules; add a
+# conditional JSON formatter (via LOG_FORMAT/ENV) for structured logs, level via env, and let the
+# runtime ship stdout/stderr to Loki (Grafana stack). For now, logs go to the console only.
+
+
 def setup_logger(module_name: str = "rag") -> logging.Logger:
-    """Set up and configure a logger with colored console output and a file handler.
+    """Set up and configure a logger with colored console output.
 
     Args:
         module_name: Name used to identify module-specific logs.
@@ -14,23 +18,11 @@ def setup_logger(module_name: str = "rag") -> logging.Logger:
     Returns:
         Configured Logger instance.
     """
-    # Create logs directory next to the rag package if it doesn't exist
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(log_dir, f"rag_{timestamp}.log")
-
     logger = logging.getLogger(f"rag.{module_name}")
     logger.setLevel(logging.INFO)
 
     # Avoid duplicate handlers if the logger was already configured
     if not logger.handlers:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.INFO)
-        file_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(file_formatter)
-
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.INFO)
         color_formatter = colorlog.ColoredFormatter(
@@ -46,8 +38,6 @@ def setup_logger(module_name: str = "rag") -> logging.Logger:
             style="%",
         )
         console_handler.setFormatter(color_formatter)
-
-        logger.addHandler(file_handler)
         logger.addHandler(console_handler)
 
         logger.info(f"{module_name} logger initialized")
