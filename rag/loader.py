@@ -62,28 +62,6 @@ def _clean_markdown(text: str) -> str:
     return _TABLE_BLOCK.sub(_keep_or_drop, text)
 
 
-# TODO(perf): if hierarchy-based context proves too weak for retrieval, switch to an
-# LLM-generated context blurb per chunk (who/when/where) instead of this heading sentence.
-def _context_sentence(metadata: dict[str, Any]) -> str:
-    """Build a French sentence locating a chunk within the document's heading hierarchy.
-
-    Args:
-        metadata: Chunk metadata; may carry ``h1``..``h4`` header breadcrumbs.
-
-    Returns:
-        A sentence like "Cet extrait provient du document « … », section « … », sous-section
-        « … ».", or an empty string if no headers are present.
-    """
-    doc = metadata.get("h1")
-    subs = [metadata[k] for k in ("h2", "h3", "h4") if k in metadata]
-    if not doc and not subs:
-        return ""
-    lead = f"Cet extrait provient du document « {doc} »" if doc else "Cet extrait provient"
-    labels = ["section", "sous-section", "sous-partie"]
-    tail = "".join(f", {labels[i]} « {sub} »" for i, sub in enumerate(subs))
-    return f"{lead}{tail}."
-
-
 class DocumentLoader:
     """Loads Markdown content and splits it into chunks for indexing."""
 
@@ -120,9 +98,6 @@ class DocumentLoader:
         for i, chunk in enumerate(chunks):
             chunk.metadata.update(metadata)
             chunk.metadata["chunk_index"] = i
-            context = _context_sentence(chunk.metadata)
-            if context:
-                chunk.page_content = f"{context}\n\n{chunk.page_content}"
         return chunks
 
     def load_from_bytes(

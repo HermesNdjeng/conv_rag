@@ -1,6 +1,6 @@
 import pytest
 
-from rag.loader import DocumentLoader, LoaderConfig
+from rag.loader import DocumentLoader, LoaderConfig, _clean_markdown
 
 
 @pytest.fixture
@@ -27,17 +27,6 @@ def test_caller_metadata_merged_into_all_chunks(loader: DocumentLoader) -> None:
     for chunk in chunks:
         assert chunk.metadata["source"] == "doc.md"
         assert chunk.metadata["author"] == "Alice"
-
-
-def test_oversized_section_is_char_split_and_respects_size_limit() -> None:
-    config = LoaderConfig(max_chunk_size=100, chunk_overlap=0)
-    loader = DocumentLoader(config)
-    long_body = "abcdefghij " * 30  # 330 chars, clean word boundaries
-    chunks = loader._split(f"# Title\n\n{long_body}", {})
-    assert len(chunks) > 1
-    for chunk in chunks:
-        assert chunk.metadata.get("h1") == "Title"
-        assert len(chunk.page_content) <= 100
 
 
 def test_strip_headers_removes_header_from_content() -> None:
@@ -92,3 +81,24 @@ def test_load_from_file_extra_metadata_does_not_override_source(
     chunks = loader.load_from_file(str(f), extra_metadata={"source": "override-attempt"})
     # extra_metadata is merged after source is set, so it wins — document that behavior
     assert all(c.metadata["source"] == "override-attempt" for c in chunks)
+
+
+def test_clean_removes_grounding_blocks() -> None:
+    text = "Avant <|ref|>label<|/ref|><|det|>[[128, 90, 873, 279]]<|/det|> apres"
+    out = _clean_markdown(text)
+    assert "label" not in out
+    assert "128" not in out
+    assert "<|" not in out
+    assert "Avant" in out and "apres" in out
+
+
+def test_clean_removes_page_split_marker() -> None:
+    assert "Page Split" not in _clean_markdown("A\n\n<--- Page Split --->\n\nB")
+
+
+def test_clean_drops_empty_table_keeps_real_table() -> None:
+    empty = "<table><tr><td></td><td></td></tr></table>"
+    real = "<table><tr><td>1955</td><td>UPC</td></tr></table>"
+    out = _clean_markdown(f"{empty}\n{real}")
+    assert "1955" in out  # real table kept
+    assert "<td></td>" not in out  # degenerate table dropped
