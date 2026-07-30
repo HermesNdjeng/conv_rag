@@ -1,5 +1,4 @@
 from typing import Any
-from uuid import uuid4
 
 import redis as redis_lib
 from langchain_core.embeddings import Embeddings
@@ -57,4 +56,4 @@ def consolidate_session(
     response = llm.invoke(
         [SystemMessage(content=CONSOLIDATION_PROMPT), HumanMessage(content=transcript)]
     )
-    store.put(("episodes", user_id), str(uuid4()), {"text": str(response.content)})
+    store.put(("episodes", user_id), thread_id, {"text": str(response.content)})

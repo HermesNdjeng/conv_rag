@@ -29,6 +29,7 @@ def test_consolidate_session_writes_episode() -> None:
 
     call = store.put.call_args
     assert call.args[0] == ("episodes", "42")  # user-scoped episodes namespace
+    assert call.args[1] == "conv_1"  # keyed by thread_id (idempotent per conversation)
     assert call.args[2] == {"text": "Résumé de la session."}
 
 
