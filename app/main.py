@@ -68,3 +68,14 @@ def chat_stream(
                 yield f"data: {json.dumps({'token': token})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/sessions/{thread_id}/end")
+def end_session(
+    thread_id: str,
+    user_id: str,
+    service: Annotated[AgentService, Depends(get_agent_service)],
+) -> dict[str, str]:
+    """End a session: consolidate the whole conversation into episodic memory."""
+    service.end_session(user_id=user_id, thread_id=thread_id)
+    return {"status": "session consolidated"}
