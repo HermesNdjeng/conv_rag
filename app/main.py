@@ -4,11 +4,13 @@ Run:  poetry run uvicorn app.main:app --reload
 """
 
 import json
+import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from agent.service import AgentService, build_agent_service
@@ -23,6 +25,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Conversational RAG — Cameroon history", lifespan=lifespan)
+
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_agent_service(request: Request) -> AgentService:
