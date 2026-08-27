@@ -11,10 +11,14 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from agent.service import AgentService, build_agent_service
 from app.schemas import ChatRequest, ChatResponse
+from rag.utils.logging_utils import setup_logger
+
+
+logger = setup_logger("app")
 
 
 @asynccontextmanager
@@ -33,6 +37,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Log any unhandled error and return a stable JSON 500 (never leak the stack to the client)."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 def get_agent_service(request: Request) -> AgentService:
@@ -67,15 +78,21 @@ def chat_stream(
     """Stream the agent's answer token by token as Server-Sent Events."""
 
     def event_stream() -> Iterator[str]:
-        for chunk, _ in service.stream(
-            user_id=payload.user_id,
-            message=payload.message,
-            thread_id=payload.thread_id,
-            stream_mode="messages",
-        ):
-            token = str(chunk.content)
-            if token:
-                yield f"data: {json.dumps({'token': token})}\n\n"
+        # The exception handler can't help here: the 200 and headers are already sent, so a failure
+        # mid-stream must be surfaced as an SSE error event instead of a silently dead connection.
+        try:
+            for chunk, _ in service.stream(
+                user_id=payload.user_id,
+                message=payload.message,
+                thread_id=payload.thread_id,
+                stream_mode="messages",
+            ):
+                token = str(chunk.content)
+                if token:
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+        except Exception:
+            logger.exception("Streaming failed for thread %s", payload.thread_id)
+            yield f"data: {json.dumps({'error': 'Internal server error'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
