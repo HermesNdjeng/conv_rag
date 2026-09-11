@@ -1,11 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
-    """One user turn. thread_id selects the conversation (working memory)."""
+    """One user turn. user_id and thread_id come from the path; the body carries the message."""
 
-    user_id: str
-    thread_id: str
     message: str
 
 
@@ -13,3 +13,9 @@ class ChatResponse(BaseModel):
     """The agent's final answer for the turn."""
 
     response: str
+
+
+class SessionUpdate(BaseModel):
+    """Partial update of a session. status='ended' triggers episodic consolidation."""
+
+    status: Literal["ended"]
