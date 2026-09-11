@@ -17,6 +17,7 @@ import redis as redis_lib
 from langchain_core.documents import Document
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
+from rag.constants import INDEX_META_KEY
 from rag.indexer import RedisIndexer
 from rag.retriever import DocumentRetriever
 from rag.schemas import RetrieverConfig, VectorStoreConfig
@@ -39,7 +40,7 @@ def redis_url() -> str:
     return url
 
 
-def test_index_retrieve_delete_roundtrip(redis_url: str) -> None:
+def test_index_retrieve_delete_drop_roundtrip(redis_url: str) -> None:
     embeddings = DeterministicFakeEmbedding(size=16)
     indexer = RedisIndexer(
         VectorStoreConfig(redis_url=redis_url, embedding_model_name="unused"),
@@ -69,6 +70,12 @@ def test_index_retrieve_delete_roundtrip(redis_url: str) -> None:
 
         after = {d.metadata["document_id"] for d in retriever.retrieve(query, [_INDEX])}
         assert "doc_a" not in after
+
+        # drop_index wipes the whole index (its chunks) AND its metadata hash.
+        assert indexer._client.exists(INDEX_META_KEY.format(_INDEX))
+        indexer.drop_index(_INDEX)
+        assert not indexer._client.exists(INDEX_META_KEY.format(_INDEX))
+        assert retriever.retrieve(query, [_INDEX]) == []
     finally:
         with contextlib.suppress(Exception):
-            indexer._client.ft(_INDEX).dropindex(delete_documents=True)
+            indexer.drop_index(_INDEX)

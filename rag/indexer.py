@@ -153,6 +153,22 @@ class RedisIndexer:
         else:
             logger.info(f"No docs found in '{index_name}' matching {where}")
 
+    def drop_index(self, index_name: str) -> None:
+        """Drop the index and all its chunks (FT.DROPINDEX DD), plus its metadata hash.
+
+        Used for a clean rebuild when the chunking strategy changes: stale chunks whose index
+        is higher than the new chunking produces would otherwise survive an in-place upsert.
+
+        Args:
+            index_name: Redis index to drop (e.g. 'global'). A no-op if it does not exist.
+        """
+        try:
+            self._client.ft(index_name).dropindex(delete_documents=True)
+            logger.info(f"Dropped index '{index_name}' and its chunks")
+        except ResponseError:
+            logger.info(f"Index '{index_name}' does not exist — nothing to drop")
+        self._client.delete(INDEX_META_KEY.format(index_name))
+
     def list_document_ids(self, index_name: str) -> set[str]:
         """Return the distinct ``document_id`` values currently indexed in index_name.
 
