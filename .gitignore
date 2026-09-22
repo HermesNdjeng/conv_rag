@@ -16,3 +16,4 @@ results/
 .DS_Store
 
 package-lock.json
+scripts/

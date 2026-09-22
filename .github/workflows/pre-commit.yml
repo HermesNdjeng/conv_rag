@@ -28,6 +28,17 @@ jobs:
         run: |
           poetry install --no-interaction --no-root
 
+      # Node + front deps: the local `eslint-front` hook shells into front/ and runs `npm run lint`.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: front/package-lock.json
+
+      - name: Install front dependencies
+        working-directory: front
+        run: npm ci
+
       - name: Run pre-commit
         run: |
           poetry run pre-commit run --all-files
