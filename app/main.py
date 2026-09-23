@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from langchain_core.messages import AIMessageChunk
 
 from agent.service import AgentService, build_agent_service
 from app.schemas import ChatRequest, ChatResponse, SessionUpdate
@@ -84,6 +85,10 @@ def post_message(
                     thread_id=thread_id,
                     stream_mode="messages",
                 ):
+                    # Only stream the LLM's answer tokens; skip tool outputs (retrieved chunks),
+                    # which also flow through "messages" mode as ToolMessages.
+                    if not isinstance(chunk, AIMessageChunk):
+                        continue
                     token = str(chunk.content)
                     if token:
                         yield f"data: {json.dumps({'token': token})}\n\n"
