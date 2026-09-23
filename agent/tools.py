@@ -7,6 +7,10 @@ from langgraph.store.base import BaseStore
 from rag.constants import GLOBAL_INDEX
 from rag.indexer import RedisIndexer
 from rag.retriever import DocumentRetriever
+from rag.utils.logging_utils import setup_logger
+
+
+logger = setup_logger("agent")
 
 
 def make_search_knowledge(retriever: DocumentRetriever) -> BaseTool:
@@ -20,8 +24,12 @@ def make_search_knowledge(retriever: DocumentRetriever) -> BaseTool:
         for a question with several parts, search each part separately. Search again
         with a refined query if the results are insufficient.
         """
+        # The query here is the LLM's own (rewritten/decomposed) formulation — log it to see it.
+        logger.info(f"search_knowledge(query={query!r})")
         indexes = [GLOBAL_INDEX, RedisIndexer.user_index(user_id)]
         docs = retriever.retrieve(query, indexes)
+        sources = [doc.metadata.get("document_id", "?") for doc in docs]
+        logger.info(f"search_knowledge -> {len(docs)} docs {sources}")
         if not docs:
             return "No relevant documents found."
         return "\n\n".join(
@@ -42,7 +50,9 @@ def recall_memory(
     Use this when the current question may build on something discussed before, or to
     reuse context, facts, or conclusions established in a past exchange.
     """
+    logger.info(f"recall_memory(query={query!r})")
     items = store.search(("episodes", user_id), query=query, limit=5)
+    logger.info(f"recall_memory -> {len(items)} memories")
     if not items:
         return "No relevant past memories."
     return "\n\n".join(f"[memory] {item.value['text']}" for item in items)

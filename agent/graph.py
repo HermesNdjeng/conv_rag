@@ -16,6 +16,10 @@ from agent.prompts import SYSTEM_PROMPT
 from agent.schemas import AgentConfig, AgentState
 from agent.tools import make_search_knowledge, recall_memory
 from rag.retriever import DocumentRetriever
+from rag.utils.logging_utils import setup_logger
+
+
+logger = setup_logger("agent")
 
 
 def build_redis_checkpointer(redis_url: str, *, ttl_minutes: int | None = None) -> RedisSaver:
@@ -73,14 +77,16 @@ def run_agent(
 ) -> dict[str, Any]:
     """Run one turn. `thread_id` selects the conversation (working memory)."""
     config = config or AgentConfig()
-    state = AgentState(user_id=user_id, messages=[HumanMessage(content=message)])
-    return agent.invoke(
-        state,
+    logger.info(f"turn start: user={user_id} thread={thread_id} message={message!r}")
+    result = agent.invoke(
+        AgentState(user_id=user_id, messages=[HumanMessage(content=message)]),
         {
             "configurable": {"thread_id": thread_id},
             "recursion_limit": 2 * config.max_iterations + 1,
         },
     )
+    logger.info("turn done")
+    return result
 
 
 def stream_agent(
@@ -109,9 +115,9 @@ def stream_agent(
         (message_chunk, metadata) tuples for "messages").
     """
     config = config or AgentConfig()
-    state = AgentState(user_id=user_id, messages=[HumanMessage(content=message)])
+    logger.info(f"turn start (stream): user={user_id} thread={thread_id} message={message!r}")
     return agent.stream(
-        state,
+        AgentState(user_id=user_id, messages=[HumanMessage(content=message)]),
         {
             "configurable": {"thread_id": thread_id},
             "recursion_limit": 2 * config.max_iterations + 1,
