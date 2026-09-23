@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { streamMessage, endSession } from './api'
 import './App.css'
 
@@ -26,6 +26,13 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const messagesRef = useRef<HTMLDivElement>(null)
+
+  // Keep the latest message in view as bubbles are added and tokens stream in.
+  useEffect(() => {
+    const el = messagesRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages])
 
   // Replace the last message (the in-progress assistant bubble) with an updated copy.
   function updateLast(update: (msg: Message) => Message) {
@@ -76,7 +83,7 @@ function App() {
         </button>
       </header>
 
-      <div className="chat__messages">
+      <div className="chat__messages" ref={messagesRef}>
         {messages.map((msg, i) => (
           <div key={i} className={`msg msg--${msg.role}`}>
             {msg.content || '…'}
